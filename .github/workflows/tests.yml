@@ -9,13 +9,39 @@ on:
 jobs:
   tests:
     runs-on: ubuntu-latest
+    
+    services:
+      redis:
+        image: redis
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     strategy:
+      fail-fast: false
       matrix:
-        php: [7.4, 8.0, 8.1, 8.2]
-        laravel: [8.*, 9.*, 10.*]
+        php: [7.2.5, 7.3, 7.4, 8.0, 8.1, 8.2]
+        laravel: [7.*, 8.*, 9.*, 10.*]
         exclude:
+          # Laravel 9 requires PHP 8.0 or higher
+          - php: 7.2.5
+            laravel: 9.*
+          - php: 7.3
+            laravel: 9.*
           - php: 7.4
+            laravel: 9.*
+          # Laravel 10 requires PHP 8.1 or higher
+          - php: 7.2.5
+            laravel: 10.*
+          - php: 7.3
+            laravel: 10.*
+          - php: 7.4
+            laravel: 10.*
+          - php: 8.0
             laravel: 10.*
 
     name: PHP ${{ matrix.php }} - Laravel ${{ matrix.laravel }}
@@ -27,7 +53,7 @@ jobs:
       uses: shivammathur/setup-php@v2
       with:
         php-version: ${{ matrix.php }}
-        extensions: dom, curl, libxml, mbstring, zip, pcntl, pdo, sqlite, pdo_sqlite
+        extensions: dom, curl, libxml, mbstring, redis, zip, pcntl, pdo, sqlite, pdo_sqlite
         coverage: none
 
     - name: Install dependencies
@@ -35,5 +61,16 @@ jobs:
         composer require "laravel/framework:${{ matrix.laravel }}" --no-interaction --no-update
         composer update --prefer-dist --no-interaction --no-progress
 
+    - name: Create database
+      run: |
+        mkdir -p database
+        touch database/database.sqlite
+
     - name: Execute tests
+      env:
+        DB_CONNECTION: sqlite
+        DB_DATABASE: database/database.sqlite
+        CACHE_DRIVER: redis
+        REDIS_HOST: 127.0.0.1
+        REDIS_PORT: 6379
       run: vendor/bin/phpunit
