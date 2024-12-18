@@ -14,22 +14,101 @@ class QueryCacheService
 {
     protected $parser;
     protected $config;
-    
+
     public function __construct()
     {
         $this->parser = new PHPSQLParser();
         $this->config = config('query-cache');
     }
-    
+
     public function enableQueryCache()
     {
         if (!$this->isEnabled()) {
             return;
         }
 
-        $this->registerQueryListener();
-        $this->registerBeforeExecutingListener();
+        // Use listen event for both caching and retrieving
+        DB::listen(function($query) {
+            if (!$this->shouldCacheQuery($query)) {
+                return;
+            }
+
+            if ($this->shouldSkipCaching($query->sql)) {
+                return;
+            }
+
+            $key = $this->generateCacheKey($query->sql, $query->bindings);
+
+            if ($this->isSelectQuery($query->sql)) {
+                // For SELECT queries, check cache and store if needed
+                if (!Cache::tags($this->getCacheTags())->has($key)) {
+                    $tags = $this->generateQueryTags($query->sql, $query->bindings);
+                    Cache::tags($tags)->put(
+                        $key,
+                        $this->executeQuery($query->sql, $query->bindings),
+                        $this->getCacheDuration($query)
+                    );
+                    Log::info('Query cached with tags: ' . implode(', ', $tags));
+                }
+            } else {
+                // For non-SELECT queries, invalidate cache
+                $this->invalidateRelatedCache($query->sql, $query->bindings);
+            }
+        });
+
+        // Extend the Builder class to add the cache macro
+        \Illuminate\Database\Query\Builder::macro('cache', function ($duration = null) {
+            $this->shouldCache = true;
+            $this->cacheDuration = $duration;
+            return $this;
+        });
     }
+
+    protected function executeQuery($sql, $bindings)
+    {
+        return DB::select($sql, $bindings);
+    }
+
+    public function getCacheTags(): array
+    {
+        return ['query-cache'];
+    }
+
+    protected function shouldCacheQuery($query): bool
+    {
+        if (!$this->isEnabled()) {
+            return false;
+        }
+
+        // Get the query builder if available
+        $builder = $query->connection->query();
+
+        // If strategy is 'all', cache everything unless explicitly disabled
+        if ($this->config['strategy'] === 'all') {
+            return !isset($builder->shouldCache) || $builder->shouldCache !== false;
+        }
+
+        // If strategy is 'manual', only cache when explicitly enabled
+        return isset($builder->shouldCache) && $builder->shouldCache === true;
+    }
+
+    protected function isEnabled(): bool
+    {
+        return $this->config['enabled'] ?? false;
+    }
+
+    protected function getCacheDuration($query): int
+    {
+        // Get the query builder if available
+        $builder = $query->connection->query();
+
+        if (isset($builder->cacheDuration)) {
+            return $builder->cacheDuration;
+        }
+
+        return $this->config['duration'] ?? 3600;
+    }
+
 
     protected function registerBeforeExecutingListener()
     {
@@ -43,7 +122,7 @@ class QueryCacheService
             }
 
             $key = $this->generateCacheKey($query, $bindings);
-            
+
             if (Cache::tags($this->getCacheTags())->has($key)) {
                 Log::info('Query served from cache: ' . $query);
                 return Cache::tags($this->getCacheTags())->get($key);
@@ -61,14 +140,14 @@ class QueryCacheService
             if ($this->shouldSkipCaching($query->sql)) {
                 return;
             }
-            
+
             $key = $this->generateCacheKey($query->sql, $query->bindings);
-            
+
             if ($this->isSelectQuery($query->sql)) {
                 if (!Cache::tags($this->getCacheTags())->has($key)) {
                     $tags = $this->generateQueryTags($query->sql, $query->bindings);
                     $duration = $this->getCacheDuration($query);
-                    
+
                     Cache::tags($tags)->put($key, $query->sql, $duration);
                     Log::info('Query cached with tags: ' . implode(', ', $tags));
                 }
@@ -78,48 +157,14 @@ class QueryCacheService
         });
     }
 
-    public function getCacheTags(): array
-    {
-        return ['query-cache'];
-    }
-
-    protected function shouldCacheQuery($builder): bool
-    {
-        if (!$this->isEnabled()) {
-            return false;
-        }
-
-        // If strategy is 'all', cache everything unless explicitly disabled
-        if ($this->config['strategy'] === 'all') {
-            return !isset($builder->shouldCache) || $builder->shouldCache !== false;
-        }
-        
-        // If strategy is 'manual', only cache when explicitly enabled
-        return isset($builder->shouldCache) && $builder->shouldCache === true;
-    }
-
-    protected function isEnabled(): bool
-    {
-        return $this->config['enabled'] ?? false;
-    }
-
-    protected function getCacheDuration($query): int
-    {
-        if (isset($query->connection->query()->cacheDuration)) {
-            return $query->connection->query()->cacheDuration;
-        }
-        
-        return $this->config['duration'] ?? 3600;
-    }
-
     protected function generateCacheKey($query, $bindings): string
     {
-        $fullQuery = vsprintf(str_replace('?', '%s', $query), 
+        $fullQuery = vsprintf(str_replace('?', '%s', $query),
             array_map(function ($binding) {
                 return is_numeric($binding) ? $binding : "'" . $binding . "'";
             }, $bindings)
         );
-        
+
         return 'query_cache:' . md5($fullQuery);
     }
 
@@ -130,7 +175,7 @@ class QueryCacheService
                 return true;
             }
         }
-        
+
         return false;
     }
 
@@ -177,7 +222,7 @@ class QueryCacheService
             if ($condition['expr_type'] === 'colref') {
                 $column = $condition['base_expr'];
                 $value = $bindings[$bindingIndex] ?? null;
-                
+
                 if ($value !== null) {
                     $tags[] = "where:$column:$value";
                     $bindingIndex++;
