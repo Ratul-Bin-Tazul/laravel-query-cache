@@ -2,7 +2,7 @@
 
 namespace Hishabee\LaravelQueryCache\Tests\Feature;
 
-use YourVendor\LaravelQueryCache\Tests\TestCase;
+use Hishabee\LaravelQueryCache\Tests\TestCase;
 use Illuminate\Support\Facades\DB;
 
 class QueryCacheTest extends TestCase
