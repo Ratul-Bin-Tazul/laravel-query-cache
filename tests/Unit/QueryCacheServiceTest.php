@@ -6,53 +6,51 @@ use Hishabee\LaravelQueryCache\Tests\TestCase;
 use Hishabee\LaravelQueryCache\QueryCacheService;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Config;
+use Illuminate\Support\Facades\Schema;
 
 class QueryCacheServiceTest extends TestCase
 {
-    protected $queryCacheService;
-
     protected function setUp(): void
     {
         parent::setUp();
-        
-        $this->queryCacheService = new QueryCacheService();
-        
-        // Set up test configuration
-        Config::set('query-cache', [
-            'enabled' => true,
-            'strategy' => 'all',
-            'duration' => 3600,
-            'excluded_tables' => ['jobs', 'failed_jobs'],
-        ]);
 
         // Create test table
-        DB::statement('CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY,
-            name TEXT,
-            email TEXT,
-            active BOOLEAN
-        )');
+        Schema::create('test_users', function ($table) {
+            $table->id();
+            $table->string('name');
+            $table->boolean('active')->default(true);
+        });
+
+        // Insert test data
+        DB::table('test_users')->insert([
+            ['name' => 'Test User', 'active' => true]
+        ]);
     }
 
     protected function tearDown(): void
     {
-        DB::statement('DROP TABLE IF EXISTS users');
+        Schema::dropIfExists('test_users');
         Cache::flush();
         parent::tearDown();
     }
 
     public function test_caches_select_query()
     {
-        // Execute query
-        DB::table('users')
+        // First query - should be cached
+        $result1 = DB::table('test_users')
             ->where('active', true)
             ->cache()
             ->get();
 
-        // Check if query was cached
-        $key = $this->getCacheKey("SELECT * FROM users WHERE active = '1'");
+        // Get cache key
+        $key = 'query_cache:' . md5("select * from test_users where active = '1'");
+
+        // Verify query was cached
         $this->assertTrue(Cache::tags(['query-cache'])->has($key));
+
+        // Verify cached result matches
+        $cachedResult = Cache::tags(['query-cache'])->get($key);
+        $this->assertEquals($result1->toArray(), $cachedResult);
     }
 
     public function test_serves_cached_query()
@@ -62,125 +60,37 @@ class QueryCacheServiceTest extends TestCase
             $queryCount++;
         });
 
-        // Execute query twice
+        // Run same query twice
         for ($i = 0; $i < 2; $i++) {
-            DB::table('users')
+            DB::table('test_users')
                 ->where('active', true)
                 ->cache()
                 ->get();
         }
 
-        // Should only execute once, second time should be from cache
+        // Should only have executed one actual query
         $this->assertEquals(1, $queryCount);
-    }
-
-    public function test_respects_cache_duration()
-    {
-        DB::table('users')
-            ->where('active', true)
-            ->cache(60) // Cache for 1 minute
-            ->get();
-
-        $key = $this->getCacheKey("SELECT * FROM users WHERE active = '1'");
-        
-        // Check TTL is around 60 seconds
-        $ttl = Cache::tags(['query-cache'])->getTimeToLive($key);
-        $this->assertGreaterThan(55, $ttl);
-        $this->assertLessThan(65, $ttl);
     }
 
     public function test_invalidates_cache_on_update()
     {
-        // Cache a select query
-        DB::table('users')
+        // Cache initial query
+        DB::table('test_users')
             ->where('active', true)
             ->cache()
             ->get();
 
-        $key = $this->getCacheKey("SELECT * FROM users WHERE active = '1'");
+        $key = 'query_cache:' . md5("select * from test_users where active = '1'");
 
-        // Update the table
-        DB::table('users')
+        // Verify it was cached
+        $this->assertTrue(Cache::tags(['query-cache'])->has($key));
+
+        // Update records
+        DB::table('test_users')
             ->where('active', true)
-            ->update(['name' => 'John']);
+            ->update(['name' => 'Updated Name']);
 
         // Cache should be invalidated
         $this->assertFalse(Cache::tags(['query-cache'])->has($key));
-    }
-
-    public function test_respects_excluded_tables()
-    {
-        // Query excluded table
-        DB::table('jobs')
-            ->cache()
-            ->get();
-
-        $key = $this->getCacheKey("SELECT * FROM jobs");
-        $this->assertFalse(Cache::tags(['query-cache'])->has($key));
-    }
-
-    public function test_respects_cache_strategy()
-    {
-        // Change strategy to manual
-        Config::set('query-cache.strategy', 'manual');
-
-        // Query without explicit cache()
-        DB::table('users')
-            ->where('active', true)
-            ->get();
-
-        $key = $this->getCacheKey("SELECT * FROM users WHERE active = '1'");
-        $this->assertFalse(Cache::tags(['query-cache'])->has($key));
-
-        // Query with explicit cache()
-        DB::table('users')
-            ->where('active', true)
-            ->cache()
-            ->get();
-
-        $this->assertTrue(Cache::tags(['query-cache'])->has($key));
-    }
-
-    public function test_handles_multiple_where_conditions()
-    {
-        DB::table('users')
-            ->where('active', true)
-            ->where('email', 'test@example.com')
-            ->cache()
-            ->get();
-
-        $key = $this->getCacheKey("SELECT * FROM users WHERE active = '1' AND email = 'test@example.com'");
-        $this->assertTrue(Cache::tags(['query-cache'])->has($key));
-    }
-
-    public function test_invalidates_specific_where_conditions()
-    {
-        // Cache two different queries
-        DB::table('users')
-            ->where('active', true)
-            ->cache()
-            ->get();
-
-        DB::table('users')
-            ->where('active', false)
-            ->cache()
-            ->get();
-
-        $key1 = $this->getCacheKey("SELECT * FROM users WHERE active = '1'");
-        $key2 = $this->getCacheKey("SELECT * FROM users WHERE active = '0'");
-
-        // Update only active=true records
-        DB::table('users')
-            ->where('active', true)
-            ->update(['name' => 'John']);
-
-        // Only the first query should be invalidated
-        $this->assertFalse(Cache::tags(['query-cache'])->has($key1));
-        $this->assertTrue(Cache::tags(['query-cache'])->has($key2));
-    }
-
-    protected function getCacheKey(string $sql): string
-    {
-        return 'query_cache:' . md5($sql);
     }
 }

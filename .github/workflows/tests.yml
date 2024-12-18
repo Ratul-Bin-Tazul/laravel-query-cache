@@ -100,4 +100,4 @@ jobs:
           REDIS_PORT: 6379
         run: |
           echo "Running PHPUnit..."
-          php -d memory_limit=512M vendor/bin/phpunit --debug
+          php -d memory_limit=1G vendor/bin/phpunit --debug
