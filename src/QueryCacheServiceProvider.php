@@ -16,6 +16,13 @@ class QueryCacheServiceProvider extends ServiceProvider
         $this->app->singleton(QueryCacheService::class, function ($app) {
             return new QueryCacheService();
         });
+
+        // Register the cache macro
+        Builder::macro('cache', function ($duration = null) {
+            $this->shouldCache = true;
+            $this->cacheDuration = $duration;
+            return $this;
+        });
     }
 
     public function boot()
