@@ -5,13 +5,18 @@
     "license": "MIT",
     "autoload": {
         "psr-4": {
-            "hishabee\\LaravelQueryCache\\": "src/"
+            "Hishabee\\LaravelQueryCache\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Hishabee\\LaravelQueryCache\\Tests\\": "tests/"
         }
     },
     "authors": [
         {
             "name": "Ratul Bin Tazul",
-            "email": "ratul@hishabee.io"
+            "email": "ratul38@gmail.com"
         }
     ],
     "require": {
@@ -26,7 +31,7 @@
     "extra": {
         "laravel": {
             "providers": [
-                "hishabee\\LaravelQueryCache\\QueryCacheServiceProvider"
+                "Hishabee\\LaravelQueryCache\\QueryCacheServiceProvider"
             ]
         }
     },

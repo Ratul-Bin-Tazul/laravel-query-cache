@@ -17,5 +17,8 @@ class TestCase extends Orchestra
     protected function defineEnvironment($app)
     {
         $app['config']->set('database.default', 'testing');
+        $app['config']->set('cache.default', 'redis');
+        $app['config']->set('query-cache.enabled', true);
+        $app['config']->set('query-cache.strategy', 'all');
     }
 }
