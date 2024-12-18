@@ -1,17 +1,17 @@
 {
-    "name": "your-vendor/laravel-query-cache",
+    "name": "hishabee/laravel-query-cache",
     "description": "Smart SQL query caching for Laravel with tag-based invalidation",
     "type": "library",
     "license": "MIT",
     "autoload": {
         "psr-4": {
-            "YourVendor\\LaravelQueryCache\\": "src/"
+            "hishabee\\LaravelQueryCache\\": "src/"
         }
     },
     "authors": [
         {
-            "name": "Your Name",
-            "email": "your.email@example.com"
+            "name": "Ratul Bin Tazul",
+            "email": "ratul@hishabee.io"
         }
     ],
     "require": {
@@ -26,7 +26,7 @@
     "extra": {
         "laravel": {
             "providers": [
-                "YourVendor\\LaravelQueryCache\\QueryCacheServiceProvider"
+                "hishabee\\LaravelQueryCache\\QueryCacheServiceProvider"
             ]
         }
     },
