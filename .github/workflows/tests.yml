@@ -61,6 +61,9 @@ jobs:
           extensions: dom, curl, libxml, mbstring, redis, zip, pcntl, pdo, sqlite, pdo_sqlite
           coverage: none
 
+      - name: Install Redis CLI
+        run: sudo apt-get install -y redis-tools
+
       - name: Install dependencies
         run: |
           composer require "laravel/framework:${{ matrix.laravel }}" --no-interaction --no-update
