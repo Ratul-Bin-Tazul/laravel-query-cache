@@ -13,7 +13,7 @@ Smart SQL query caching for Laravel with tag-based invalidation.
 ## Installation
 
 ```bash
-composer require your-vendor/laravel-query-cache
+composer require hishabee/laravel-query-cache
 ```
 
 The package will automatically register its service provider.
