@@ -10,7 +10,7 @@ class QueryCacheTest extends TestCase
     public function test_can_cache_query()
     {
         // Your test code here
-        DB::table('users')
+        DB::table('test_users')
             ->where('active', true)
             ->cache()
             ->get();
