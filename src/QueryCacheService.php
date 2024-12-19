@@ -34,23 +34,55 @@ class QueryCacheService
 
             $key = $this->generateCacheKey($query->sql, $query->bindings);
 
+
             if ($this->isSelectQuery($query->sql)) {
-                if (!Cache::tags(['query-cache'])->has($key)) {
+                if (!Cache::tags($this->generateTags($query))->has($key)) {
                     $result = DB::select($query->sql, $query->bindings);
-                    Cache::tags(['query-cache'])->put(
+                    Cache::tags($this->generateTags($query))->put(
                         $key,
                         $result,
                         $this->getCacheDuration($query)
                     );
-                    Log::info('Query cached: ' . $query->sql);
                 }
-                return Cache::tags(['query-cache'])->get($key);
+                return Cache::tags($this->generateTags($query))->get($key);
             } else {
-                // For non-SELECT queries, invalidate related cache
-                Cache::tags(['query-cache'])->flush();
-                Log::info('Cache invalidated due to: ' . $query->sql);
+                // For UPDATE/DELETE queries, invalidate related caches
+                $this->invalidateRelatedTags($query);
             }
+
         });
+    }
+
+    protected function generateTags($query): array
+    {
+        $tags = ['query-cache']; // Base tag
+
+        // Extract table name from query
+        preg_match('/from\s+([^\s,]+)/i', $query->sql, $matches);
+        if (!empty($matches[1])) {
+            $tags[] = 'table:' . $matches[1];
+        }
+
+        // Extract WHERE conditions and values
+        if (!empty($query->bindings)) {
+            preg_match_all('/where\s+([^\s]+)\s*=\s*\?/i', $query->sql, $matches);
+            foreach ($matches[1] as $i => $column) {
+                $value = $query->bindings[$i];
+                $tags[] = "where:{$matches[1][$i]}:{$value}";
+            }
+        }
+
+        return $tags;
+    }
+
+    protected function invalidateRelatedTags($query): void
+    {
+        // Extract table name
+        preg_match('/from\s+([^\s,]+)/i', $query->sql, $matches);
+        if (!empty($matches[1])) {
+            $table = $matches[1];
+            Cache::tags(["table:$table"])->flush();
+        }
     }
 
     protected function shouldCacheQuery($query): bool

@@ -10,10 +10,26 @@ class QueryCacheServiceProvider extends ServiceProvider
 {
     public function register()
     {
-        Builder::macro('cache', function ($duration = null) {
+        $this->mergeConfigFrom(__DIR__.'/../config/query-cache.php', 'query-cache');
+
+        // Single service registration
+        $this->app->singleton(QueryCacheService::class);
+
+        // Simplified cache macro
+        Builder::macro('cache', fn($duration = null) => tap($this, function() use ($duration) {
             $this->shouldCache = true;
             $this->cacheDuration = $duration;
-            return $this;
-        });
+        }));
+    }
+
+    public function boot()
+    {
+        if (config('query-cache.enabled')) {
+            $this->app->make(QueryCacheService::class)->enableQueryCache();
+        }
+
+        $this->publishes([
+            __DIR__.'/../config/query-cache.php' => config_path('query-cache.php'),
+        ], 'query-cache-config');
     }
 }
